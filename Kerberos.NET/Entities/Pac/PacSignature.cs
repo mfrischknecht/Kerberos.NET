@@ -4,7 +4,10 @@
 // -----------------------------------------------------------------------
 
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security;
+using System.Security.Cryptography;
 using Kerberos.NET.Crypto;
 using Kerberos.NET.Ndr;
 
@@ -113,9 +116,43 @@ namespace Kerberos.NET.Entities.Pac
 
         internal void Validate(KeyTable keytab, KrbPrincipalName sname)
         {
-            var key = keytab.GetKey(this.Type, sname);
+            if (keytab == null)
+            {
+                throw new ArgumentNullException(nameof(keytab));
+            }
 
-            this.Validate(key);
+            var keys = keytab.GetKeys(this.Type, sname);
+
+            if (!keys.Any())
+            {
+                throw new InvalidOperationException($"Could not find a key for {this.Type} and {sname.FullyQualifiedName}");
+            }
+
+            Exception ex = null;
+
+            foreach (var key in keys)
+            {
+                try
+                {
+                    this.Validate(key);
+                    return;
+                }
+                catch (CryptographicException cex)
+                {
+                    ex = cex;
+                    continue;
+                }
+                catch (SecurityException secx)
+                {
+                    ex = secx;
+                    continue;
+                }
+            }
+
+            if (ex != null)
+            {
+                throw ex;
+            }
         }
 
         internal void Sign(Memory<byte> pacUnsigned, KerberosKey key)
